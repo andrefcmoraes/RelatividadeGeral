@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulação de Geodésica 3D - Métrica de Schwarzschild</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030712; /* gray-950 */
+            color: #d1d5db; /* gray-300 */
+            margin: 0;
+            overflow: hidden; /* Evita barras de rolagem causadas pelo canvas 3D */
+        }
+        .control-panel {
+            background-color: rgba(17, 24, 39, 0.8); /* gray-900 com 80% opacidade */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        #simulation-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: -1; /* Coloca o canvas 3D no fundo */
+        }
+        canvas {
+            display: block;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #2563eb; /* blue-600 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #2563eb; /* blue-600 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .overlay-ui {
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div id="simulation-container"></div>
+
+    <div class="w-full max-w-6xl mx-auto overlay-ui grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            
+        <!-- Painel de Controle -->
+        <div class="lg:col-span-1 control-panel p-6">
+            <h2 class="text-2xl font-bold text-gray-100 mb-4">Controles</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label for="b_param" class="block font-medium text-gray-300 text-sm">Parâmetro de Impacto (b)</label>
+                    <input type="range" id="b_param" min="0" max="15" value="5" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    <span id="b_value" class="text-sm text-blue-400 font-semibold">5.00</span>
+                </div>
+
+                <div>
+                    <label for="x0_param" class="block font-medium text-gray-300 text-sm">Distância Inicial (x₀)</label>
+                    <input type="range" id="x0_param" min="10" max="50" value="25" step="0.1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    <span id="x0_value" class="text-sm text-blue-400 font-semibold">25</span>
+                </div>
+                
+                <div>
+                    <label for="rs_param" class="block font-medium text-gray-300 text-sm">Raio de Schwarzschild (Rs)</label>
+                    <input type="range" id="rs_param" min="0.1" max="5" value="1.5" step="0.1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    <span id="rs_value" class="text-sm text-blue-400 font-semibold">1.5</span>
+                </div>
+
+                <div>
+                    <label for="v_inf_param" class="block font-medium text-gray-300 text-sm">Velocidade no Infinito (v/c)</label>
+                    <input type="range" id="v_inf_param" min="0.01" max="0.99" value="0.3" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    <span id="v_inf_value" class="text-sm text-blue-400 font-semibold">0.30</span>
+                </div>
+
+                <div>
+                    <label for="tau_max_param" class="block font-medium text-gray-300 text-sm">Tempo de Simulação (τ)</label>
+                    <input type="range" id="tau_max_param" min="100" max="2000" value="1000" step="50" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    <span id="tau_max_value" class="text-sm text-blue-400 font-semibold">1000</span>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <button id="start-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                    Iniciar Simulação
+                </button>
+            </div>
+            
+            <div id="status" class="mt-4 text-center text-sm text-gray-400">Pronto para iniciar.</div>
+        </div>
+
+        <div class="lg:col-span-2 hidden lg:block">
+            <!-- Espaço em branco para alinhar o painel à esquerda -->
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SETUP ---
+        const bSlider = document.getElementById('b_param');
+        const x0Slider = document.getElementById('x0_param');
+        const rsSlider = document.getElementById('rs_param');
+        const vInfSlider = document.getElementById('v_inf_param');
+        const tauMaxSlider = document.getElementById('tau_max_param');
+        
+        const bValueSpan = document.getElementById('b_value');
+        const x0ValueSpan = document.getElementById('x0_value');
+        const rsValueSpan = document.getElementById('rs_value');
+        const vInfValueSpan = document.getElementById('v_inf_value');
+        const tauMaxValueSpan = document.getElementById('tau_max_value');
+
+        const startBtn = document.getElementById('start-btn');
+        const statusDiv = document.getElementById('status');
+        
+        let physicsAnimationId;
+
+        // --- 3D SETUP ---
+        const container = document.getElementById('simulation-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        camera.position.set(20, 20, 20);
+        controls.update();
+
+        // --- OBJETOS DA CENA ---
+        // Fundo de estrelas (Skybox)
+        const loader = new THREE.CubeTextureLoader();
+        const texture = loader.load([
+            'https://placehold.co/1024x1024/000000/FFFFFF?text=+',
+            'https://placehold.co/1024x1024/000000/FFFFFF?text=+',
+            'https://placehold.co/1024x1024/000000/FFFFFF?text=+',
+            'https://placehold.co/1024x1024/000000/FFFFFF?text=+',
+            'https://placehold.co/1024x1024/000000/FFFFFF?text=+',
+            'https://placehold.co/1024x1024/000000/FFFFFF?text=+',
+        ]);
+        scene.background = texture;
+
+
+        // Buraco Negro
+        const blackHole = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 64, 64),
+            new THREE.MeshBasicMaterial({ color: 0x000000 })
+        );
+        scene.add(blackHole);
+
+        // Partícula
+        const particle = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xffffff })
+        );
+        scene.add(particle);
+
+        // Trajetória
+        const MAX_POINTS = 5000;
+        const lineGeometry = new THREE.BufferGeometry();
+        const linePositions = new Float32Array(MAX_POINTS * 3);
+        lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
+        const trajectoryLine = new THREE.Line(lineGeometry, lineMaterial);
+        scene.add(trajectoryLine);
+        let drawCount = 0;
+
+        // --- ATUALIZAÇÃO DOS VALORES DOS SLIDERS ---
+        bSlider.oninput = () => bValueSpan.textContent = parseFloat(bSlider.value).toFixed(2);
+        x0Slider.oninput = () => x0ValueSpan.textContent = parseFloat(x0Slider.value).toFixed(2);
+        rsSlider.oninput = () => {
+            const rs = parseFloat(rsSlider.value);
+            rsValueSpan.textContent = rs.toFixed(2);
+            blackHole.scale.set(rs, rs, rs);
+        };
+        vInfSlider.oninput = () => vInfValueSpan.textContent = parseFloat(vInfSlider.value).toFixed(2);
+        tauMaxSlider.oninput = () => tauMaxValueSpan.textContent = parseFloat(tauMaxSlider.value);
+
+        // --- FUNÇÕES DA SIMULAÇÃO (FÍSICA) ---
+        function orbitVelocities(y, Rs, E, L, dr_sign) {
+            const r = y[0];
+            if (r <= Rs) return [0, 0];
+            const r2 = r * r;
+            const V_eff_squared = (1 - Rs / r) * (1 + (L * L) / r2);
+            const dr_dtau_squared = E * E - V_eff_squared;
+            if (dr_dtau_squared < 0) {
+                dr_sign.val = 1; 
+                return [0, 0];
+            }
+            const dr_dtau = dr_sign.val * Math.sqrt(dr_dtau_squared);
+            const dtheta_dtau = L / r2;
+            return [dr_dtau, dtheta_dtau];
+        }
+
+        function rk4(func, y, dt, Rs, E, L, dr_sign) {
+            const k1 = func(y, Rs, E, L, dr_sign).map(v => v * dt);
+            const y_k1 = y.map((v, i) => v + 0.5 * k1[i]);
+            const k2 = func(y_k1, Rs, E, L, dr_sign).map(v => v * dt);
+            const y_k2 = y.map((v, i) => v + 0.5 * k2[i]);
+            const k3 = func(y_k2, Rs, E, L, dr_sign).map(v => v * dt);
+            const y_k3 = y.map((v, i) => v + k3[i]);
+            const k4 = func(y_k3, Rs, E, L, dr_sign).map(v => v * dt);
+            return y.map((v, i) => v + (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]) / 6);
+        }
+        
+        // --- LOOP DE RENDERIZAÇÃO 3D ---
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate3D();
+
+        // --- CONTROLE DA SIMULAÇÃO ---
+        function startSimulation() {
+            if (physicsAnimationId) {
+                cancelAnimationFrame(physicsAnimationId);
+            }
+            
+            const b = parseFloat(bSlider.value);
+            const x0 = parseFloat(x0Slider.value);
+            const Rs = parseFloat(rsSlider.value);
+            const v_inf = parseFloat(vInfSlider.value);
+            const tau_max = parseFloat(tauMaxSlider.value);
+            
+            blackHole.scale.set(Rs, Rs, Rs);
+
+            const r0 = Math.sqrt(x0 * x0 + b * b);
+            if (r0 <= Rs) {
+                statusDiv.textContent = "Erro: Posição inicial dentro do horizonte de eventos!";
+                statusDiv.style.color = 'red';
+                return;
+            }
+
+            const E = 1 / Math.sqrt(1 - v_inf * v_inf);
+            const L = b * v_inf * E;
+
+            const V_eff_squared_initial = (1 - Rs / r0) * (1 + (L * L) / (r0*r0));
+            if (E * E < V_eff_squared_initial) {
+                statusDiv.textContent = "Erro: Energia insuficiente para esta órbita.";
+                statusDiv.style.color = 'red';
+                return;
+            }
+
+            const ci = [r0, Math.atan2(b, x0)];
+            let state = [...ci];
+            let dr_sign = { val: -1 }; 
+            
+            drawCount = 0;
+            const positions = trajectoryLine.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i++) { positions[i] = 0; }
+            trajectoryLine.geometry.setDrawRange(0, 0);
+            trajectoryLine.geometry.attributes.position.needsUpdate = true;
+
+            let tau = 0;
+            const dt = 0.1; 
+            
+            statusDiv.textContent = "Simulação em andamento...";
+            statusDiv.style.color = 'green';
+
+            function runPhysicsStep() {
+                for(let i=0; i<5; i++) { 
+                    if (tau >= tau_max || state[0] <= Rs) {
+                        statusDiv.textContent = "Simulação concluída.";
+                        statusDiv.style.color = 'initial';
+                        cancelAnimationFrame(physicsAnimationId);
+                        return;
+                    }
+                    
+                    const prevState = [...state];
+                    state = rk4(orbitVelocities, state, dt, Rs, E, L, dr_sign);
+                    
+                    if (state.some(isNaN) || Math.abs(state[0] - prevState[0]) < 1e-9) {
+                        statusDiv.textContent = "Simulação concluída (ponto de retorno).";
+                        statusDiv.style.color = 'initial';
+                        cancelAnimationFrame(physicsAnimationId);
+                        return;
+                    }
+
+                    tau += dt;
+                    
+                    const r = state[0];
+                    const theta = state[1];
+                    const x = r * Math.cos(theta);
+                    const y = r * Math.sin(theta);
+                    particle.position.set(x, y, 0);
+
+                    if (drawCount < MAX_POINTS) {
+                        positions[drawCount * 3] = x;
+                        positions[drawCount * 3 + 1] = y;
+                        positions[drawCount * 3 + 2] = 0;
+                        drawCount++;
+                        trajectoryLine.geometry.setDrawRange(0, drawCount);
+                        trajectoryLine.geometry.attributes.position.needsUpdate = true;
+                    }
+                }
+                physicsAnimationId = requestAnimationFrame(runPhysicsStep);
+            }
+            runPhysicsStep();
+        }
+
+        startBtn.addEventListener('click', startSimulation);
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, false);
+
+    </script>
+</body>
+</html>
